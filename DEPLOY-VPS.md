@@ -85,7 +85,8 @@ O stack expõe **HTTP na porta 80**. Para HTTPS:
 **Opção A — TLS na própria VPS (Certbot + Nginx no host)**  
 Instale Nginx/Caddy **fora** do Docker como reverse proxy na porta 443, apontando para `127.0.0.1:80` (ou `WEB_PORT` escolhido). Emita certificado Let’s Encrypt para o domínio do cliente.
 
-**Opção B — Cloudflare**Proxy laranja + modo TLS “Full” pode simplificar, desde que o origin esteja coerente com `CORS_ORIGIN`.
+**Opção B — Cloudflare**  
+Proxy laranja + modo TLS “Full” pode simplificar, desde que o origin esteja coerente com `CORS_ORIGIN`.
 
 Atualize **`CORS_ORIGIN`** no `.env` para as URLs **https** exatas e reinicie a API:
 

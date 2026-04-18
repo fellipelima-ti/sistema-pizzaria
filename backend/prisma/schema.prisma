@@ -1,0 +1,171 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int         @id @default(autoincrement())
+  name         String
+  email        String      @unique
+  role         String      @default("admin")
+  active       Boolean     @default(true)
+  passwordHash String
+  recoveryCodeHash      String?
+  recoveryCodeExpiresAt DateTime?
+  createdAt    DateTime    @default(now())
+  cashShifts   CashShift[]
+  tableCheckoutDiscountLogs TableCheckoutDiscountLog[]
+}
+
+model Customer {
+  id        Int      @id @default(autoincrement())
+  name      String
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  orders    Order[]
+}
+
+model Product {
+  id         Int           @id @default(autoincrement())
+  name       String
+  price      Float
+  category   String        @default("outros")
+  imageUrl   String?
+  available  Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  orderItems           OrderItem[] @relation("OrderItemPrimaryProduct")
+  secondHalfOrderItems OrderItem[] @relation("OrderItemSecondHalf")
+  sizes      ProductSize[]
+}
+
+/** Tamanhos/variantes com preço próprio (ex.: pizza P, M, G). */
+model ProductSize {
+  id        Int     @id @default(autoincrement())
+  productId Int
+  label     String
+  price     Float
+  sortOrder Int     @default(0)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, label])
+  @@index([productId])
+}
+
+model DiningTable {
+  id          Int     @id @default(autoincrement())
+  number      Int     @unique
+  label       String?
+  publicToken String  @unique @default(uuid())
+  /** QR permitido para o cliente quando a mesa estiver liberada pelo atendimento. */
+  qrEnabled Boolean  @default(false)
+  orders      Order[]
+  serviceRequests TableServiceRequest[]
+  checkoutDiscountLogs TableCheckoutDiscountLog[]
+}
+
+model Order {
+  id         Int          @id @default(autoincrement())
+  customerId Int
+  tableId    Int?
+  type       String       @default("balcao")
+  orderSource String      @default("staff")
+  status     String       @default("novo")
+  paymentMethod String?
+  paymentStatus String     @default("pendente")
+  paidAt      DateTime?
+  note       String?
+  deliveryFee     Float    @default(0)
+  deliveryAddress String?
+  total      Float
+  createdAt  DateTime     @default(now())
+  customer   Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  table      DiningTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  items      OrderItem[]
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  /** Segundo sabor em pizza G (meia a meia). */
+  secondProductId Int?
+  quantity  Int     @default(1)
+  note      String?
+  /** Tamanho escolhido (rótulo), ex.: "M" — nulo se o produto não usa tamanhos. */
+  sizeLabel String?
+  unitPrice Float
+  subtotal  Float
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product  @relation("OrderItemPrimaryProduct", fields: [productId], references: [id], onDelete: Restrict)
+  secondProduct  Product? @relation("OrderItemSecondHalf", fields: [secondProductId], references: [id], onDelete: Restrict)
+}
+
+model CashShift {
+  id              Int       @id @default(autoincrement())
+  status          String    @default("aberto")
+  openedAt        DateTime  @default(now())
+  closedAt        DateTime?
+  openingBalance  Float     @default(0)
+  closingBalance  Float?
+  openNote        String?
+  closeNote       String?
+  summary         Json?
+  userId          Int?
+  user            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+/** Configuração única (id=1): nome e logo exibidos no painel e na página pública do QR */
+model EstablishmentSetting {
+  id        Int      @id
+  tradeName String   @default("Pizzaria")
+  logoUrl   String?
+  /** Taxa fixa de entrega (R$) somada ao total em pedidos tipo entrega */
+  deliveryFeeDefault Float @default(0)
+  /** Chave Pix (telefone, e-mail, aleatória ou EVP) para exibir ao cliente */
+  pixChave         String?
+  /** Nome do recebedor exibido no app do banco (opcional) */
+  pixNomeRecebedor String?
+  updatedAt DateTime @updatedAt
+}
+
+model TableServiceRequest {
+  id           Int      @id @default(autoincrement())
+  tableId       Int
+  customerName  String?
+  requestType   String   @default("chamar_garcom")
+  paymentMethod String?
+  note          String?
+  status        String   @default("novo")
+  createdAt     DateTime @default(now())
+  attendedAt    DateTime?
+  table         DiningTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+}
+
+model TableCheckoutDiscountLog {
+  id                   Int      @id @default(autoincrement())
+  tableId              Int
+  userId               Int?
+  paymentMethod        String?
+  grossTotal           Float
+  discountFixed        Float    @default(0)
+  discountPercent      Float    @default(0)
+  discountPercentValue Float    @default(0)
+  totalDiscount        Float    @default(0)
+  surcharge            Float    @default(0)
+  netTotal             Float
+  discountReason       String
+  createdAt            DateTime @default(now())
+  table                DiningTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  user                 User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}

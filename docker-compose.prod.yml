@@ -1,0 +1,100 @@
+# Producao na VPS do cliente: Caddy (HTTPS) + Nginx (web) + API + PostgreSQL
+# Uso: copie deploy/env.production.example para .env na raiz, edite, depois:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Painel e QR: https://SEU_DOMINIO/ | API via mesmo host: /api/...
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:-pizzaria}
+    volumes:
+      - pizzaria_pg_data:/var/lib/postgresql/data
+    networks:
+      - pizzaria_internal
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\"",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:3333/health',(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 90s
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?defina DATABASE_URL no .env}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      CORS_ORIGIN: ${CORS_ORIGIN:?defina CORS_ORIGIN no .env}
+      PORT: "3333"
+      HOST: "0.0.0.0"
+      ALLOW_SEED: ${ALLOW_SEED:-false}
+    volumes:
+      - pizzaria_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - pizzaria_internal
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - pizzaria_internal
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?defina DOMAIN no .env}
+      CADDY_EMAIL: ${CADDY_EMAIL:?defina CADDY_EMAIL no .env}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - web
+    networks:
+      - pizzaria_internal
+
+volumes:
+  pizzaria_pg_data:
+  pizzaria_uploads:
+  caddy_data:
+  caddy_config:
+
+networks:
+  pizzaria_internal:
+    driver: bridge

@@ -1,0 +1,11 @@
+{
+  email {env.CADDY_EMAIL}
+}
+
+{$DOMAIN} {
+  encode gzip
+
+  # Todo o site (painel, /mesa/ e /api/ já proxy via nginx dentro do container `web`)
+  reverse_proxy web:80
+}
+

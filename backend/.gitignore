@@ -1,0 +1,13 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+/src/generated/prisma
+
+# Fotos enviadas pelo cardapio (mantenha a pasta no git)
+/uploads/products/*
+!/uploads/products/.gitkeep
+
+# Logos enviadas pelo painel (volume em produção)
+/uploads/branding/*
+!/uploads/branding/.gitkeep

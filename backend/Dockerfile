@@ -6,10 +6,9 @@ RUN apk add --no-cache openssl
 
 COPY package.json package-lock.json ./
 COPY prisma ./prisma/
+COPY src ./src
 
 RUN npm ci --omit=dev && npx prisma generate
-
-COPY src ./src
 
 ENV NODE_ENV=production
 ENV PORT=3333

@@ -139,6 +139,25 @@ git pull
 
 O script faz `up -d --build` (recompila **api** e **web**, roda migrations na subida da API).
 
+### Se “nada do sistema atualizou” no navegador
+
+1. Confirme que o `git pull` trouxe código novo (`git log -1 --oneline`).
+2. Na VPS, **rebuild forçado** (ignora cache do Docker — o mais comum quando o painel continua igual):
+
+```bash
+cd /opt/sistema-pizzaria
+git pull
+./deploy/vps-compose.sh fresh
+```
+
+3. No PC: **Ctrl+F5** no site (ou aba anônima). O front em produção vem da **imagem** `web`, não da pasta no disco.
+
+4. Teste a API pelo domínio (a porta **3333** não está aberta no host, só dentro do Docker):
+
+```bash
+curl -sS "https://SEU_DOMINIO/api/health"
+```
+
 **Só para ir mais rápido** (código já no disco, sem rebuild de tudo o que não mudou):
 
 ```bash

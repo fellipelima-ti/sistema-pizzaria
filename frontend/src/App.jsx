@@ -71,7 +71,7 @@ const TAB_ACCESS = {
   novo: ["admin", "caixa", "garcom"],
   cardapio: ["admin"],
   cozinha: ["admin", "cozinha"],
-  caixa: ["admin"],
+  caixa: ["admin", "caixa"],
   pedidos: ["admin", "caixa", "garcom"],
   relatorios: ["admin"],
   cadastros: ["admin"],
@@ -125,6 +125,100 @@ function normalizeRole(role) {
 function roleCanAccessTab(role, tabId) {
   const r = normalizeRole(role);
   return (TAB_ACCESS[tabId] || USER_ROLES).includes(r);
+}
+
+/** Itens do pedido em uma linha (comandas por mesa). */
+function summarizeOrderItemsForComanda(order) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  if (!items.length) {
+    return "Itens não disponíveis — use Atualizar dados ou reabra a aba.";
+  }
+  return items
+    .map((i) => {
+      const nm = i.product?.name || "Item";
+      const half = i.secondProduct?.name ? ` + ${i.secondProduct.name}` : "";
+      const sz =
+        i.sizeLabel != null && String(i.sizeLabel).trim()
+          ? ` (${String(i.sizeLabel).trim()})`
+          : "";
+      const note = i.note ? ` — ${String(i.note).trim()}` : "";
+      return `${i.quantity}× ${nm}${half}${sz}${note}`;
+    })
+    .join(" · ");
+}
+
+function TableComandasOverview({ tables, canClose, onCloseComanda }) {
+  const busyTables = (tables || []).filter((t) => (t.openOrders?.length || 0) > 0);
+  if (!busyTables.length) {
+    return (
+      <p className="empty-hint mesa-comandas-empty">
+        Nenhuma mesa com pedidos ativos no momento.
+      </p>
+    );
+  }
+  return (
+    <ul className="mesa-comandas-list">
+      {busyTables.map((t) => {
+        const orders = t.openOrders || [];
+        const tableTotal = Number(
+          orders.reduce((s, o) => s + Number(o.total || 0), 0).toFixed(2)
+        );
+        return (
+          <li key={t.id} className="mesa-comanda-card">
+            <div className="mesa-comanda-card-head">
+              <div>
+                <strong>Mesa {t.number}</strong>
+                {t.label ? (
+                  <span className="mesa-comanda-label"> · {t.label}</span>
+                ) : null}
+              </div>
+              <div className="mesa-comanda-card-meta">
+                <span className="mesa-comanda-count">
+                  {orders.length} pedido(s)
+                </span>
+                <strong className="mesa-comanda-total">R$ {tableTotal.toFixed(2)}</strong>
+              </div>
+            </div>
+            <ul className="mesa-comanda-orders">
+              {orders.map((o) => (
+                <li key={o.id} className="mesa-comanda-order">
+                  <div className="mesa-comanda-order-head">
+                    <span>
+                      #{o.id} · {o.customer?.name || "Cliente"}
+                      {o.orderSource === "qr_mesa" ? (
+                        <span className="source-badge source-badge-inline">
+                          Celular
+                        </span>
+                      ) : null}
+                    </span>
+                    <span>
+                      R$ {Number(o.total).toFixed(2)} · {o.status} · {o.paymentStatus}
+                    </span>
+                  </div>
+                  <p className="mesa-comanda-items">{summarizeOrderItemsForComanda(o)}</p>
+                </li>
+              ))}
+            </ul>
+            {canClose ? (
+              <div className="mesa-comanda-actions">
+                <button
+                  type="button"
+                  className="btn-sm btn-sm-danger"
+                  onClick={() => onCloseComanda(t)}
+                >
+                  Fechar comanda e liberar mesa
+                </button>
+                <span className="hint-inline mesa-comanda-hint">
+                  Registra pagamento da mesa, finaliza os pedidos e bloqueia o QR até
+                  liberar de novo em Mesas.
+                </span>
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 function App() {
@@ -226,6 +320,7 @@ function App() {
   const [closeTableDiscountReason, setCloseTableDiscountReason] = useState("");
 
   const [message, setMessage] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
 
   const [establishment, setEstablishment] = useState(null);
   const [brandNameDraft, setBrandNameDraft] = useState("");
@@ -489,31 +584,56 @@ function App() {
   async function handleLogin(event) {
     event.preventDefault();
     setMessage("");
-    const response = await fetch(`${API_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    const emailNorm = email.trim().toLowerCase();
+    setLoginBusy(true);
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailNorm, password }),
+      });
 
-    if (!response.ok) {
-      setMessage("Falha no login.");
-      return;
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(
+          data.message ||
+            (response.status >= 500
+              ? "Servidor indisponível. Tente em instantes."
+              : "Falha no login.")
+        );
+        return;
+      }
+      if (
+        !data?.token ||
+        typeof data.token !== "string" ||
+        !data?.user ||
+        typeof data.user.name !== "string"
+      ) {
+        setMessage(
+          "Resposta incompleta do servidor. Rode o seed (POST /api/seed) com ALLOW_SEED=true e confira a API."
+        );
+        return;
+      }
+      const nextRole = normalizeRole(data.user?.role);
+      localStorage.setItem(LS_TOKEN, data.token);
+      localStorage.setItem(LS_USER_NAME, data.user.name);
+      localStorage.setItem(LS_USER_ROLE, nextRole);
+      setToken(data.token);
+      setUserName(data.user.name);
+      setUserRole(nextRole);
+      const firstTab =
+        TABS.find((t) => roleCanAccessTab(nextRole, t.id))?.id || "inicio";
+      setActiveTab(firstTab);
+      setMessage(`Bem-vindo, ${data.user.name}.`);
+      await refreshEstablishment();
+      await loadDeliveryFeeDefault(data.token).catch(() => {});
+    } catch {
+      setMessage(
+        "Não foi possível conectar à API. Confira rede, HTTPS e se o endereço /api está acessível."
+      );
+    } finally {
+      setLoginBusy(false);
     }
-
-    const data = await response.json();
-    const nextRole = normalizeRole(data.user?.role);
-    localStorage.setItem(LS_TOKEN, data.token);
-    localStorage.setItem(LS_USER_NAME, data.user.name);
-    localStorage.setItem(LS_USER_ROLE, nextRole);
-    setToken(data.token);
-    setUserName(data.user.name);
-    setUserRole(nextRole);
-    const firstTab =
-      TABS.find((t) => roleCanAccessTab(nextRole, t.id))?.id || "inicio";
-    setActiveTab(firstTab);
-    setMessage(`Bem-vindo, ${data.user.name}.`);
-    await refreshEstablishment();
-    await loadDeliveryFeeDefault(data.token);
   }
 
   async function loadDeliveryFeeDefault(customToken = token) {
@@ -707,18 +827,34 @@ function App() {
     }
   }
 
+  /** @returns {Promise<object|null>} turno aberto ou null (estado também é atualizado) */
   async function loadCashCurrent(customToken = token) {
-    const response = await fetch(`${API_URL}/cash/current`, {
-      headers: { Authorization: `Bearer ${customToken}` },
-    });
-    if (!response.ok) {
-      if (response.status !== 403) {
-        setMessage("Não foi possível carregar estado do caixa.");
+    try {
+      const response = await fetch(`${API_URL}/cash/current`, {
+        headers: { Authorization: `Bearer ${customToken}` },
+      });
+      if (!response.ok) {
+        if (response.status !== 403 && response.status !== 401) {
+          setMessage("Não foi possível carregar estado do caixa.");
+        }
+        setCashCurrent(null);
+        return null;
       }
-      if (response.status === 403) setCashCurrent(null);
-      return;
+      const data = await response.json();
+      const shift =
+        data != null &&
+        typeof data === "object" &&
+        !Array.isArray(data) &&
+        "id" in data
+          ? data
+          : null;
+      setCashCurrent(shift);
+      return shift;
+    } catch {
+      setMessage("Não foi possível conectar para verificar o caixa.");
+      setCashCurrent(null);
+      return null;
     }
-    setCashCurrent(await response.json());
   }
 
   async function loadCashShifts(customToken = token) {
@@ -1081,15 +1217,15 @@ function App() {
         openNote: cashOpenNote || null,
       }),
     });
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      setMessage(err.message || "Falha ao abrir caixa.");
+      setMessage(payload.message || "Falha ao abrir caixa.");
       return;
     }
     setCashOpenNote("");
     setCashOpenBalance("0");
     setMessage("Caixa aberto.");
-    loadCashCurrent();
+    setCashCurrent(payload && typeof payload === "object" ? payload : null);
     loadCashShifts();
   }
 
@@ -1371,8 +1507,9 @@ function App() {
     if (managesFinance) loadFinanceSummary();
   }
 
-  function openCloseTableModal(tableRow) {
+  async function openCloseTableModal(tableRow) {
     if (!tableRow?.id) return;
+    await loadCashCurrent(token);
     setCloseTableModal(tableRow);
     setCloseTablePaymentMethod("pix");
     setCloseTableDiscount("0");
@@ -1498,18 +1635,14 @@ function App() {
   }
 
   async function createOrderFromCart() {
-    if (!cashCurrent) {
-      const isOwner = normalizeRole(userRole) === "admin";
-      setMessage(
-        isOwner
-          ? "Abra o turno de caixa (aba Financeiro) antes de registrar pedidos."
-          : "Turno fechado. Peça ao administrador para abrir o turno no Financeiro."
-      );
-      if (isOwner) setActiveTab("caixa");
-      return;
-    }
+    void loadCashCurrent(token);
     if (!cartItems.length || !selectedCustomerId) {
       setMessage("Adicione itens e selecione cliente.");
+      return;
+    }
+    const customerIdNum = Number(selectedCustomerId);
+    if (!Number.isFinite(customerIdNum) || customerIdNum <= 0) {
+      setMessage("Selecione um cliente válido na lista.");
       return;
     }
     if (orderType === "mesa" && !selectedTableId) {
@@ -1528,48 +1661,53 @@ function App() {
         return;
       }
     }
-    for (const item of cartItems) {
-      const product = products.find((p) => p.id === item.productId);
-      if (!product) continue;
-      if (
-        productHasSizes(product) &&
-        isHalfHalfSizeLabel(item.sizeLabel) &&
-        !item.secondProductId
-      ) {
-        setMessage(
-          `Escolha o 2º sabor (meia a meia) para "${product.name}" no tamanho ${item.sizeLabel}.`
-        );
-        return;
-      }
-    }
-    const response = await fetch(`${API_URL}/orders`, {
-      method: "POST",
-      headers: { ...authHeader, "Content-Type": "application/json" },
+    let response;
+    try {
+      response = await fetch(`${API_URL}/orders`, {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
         body: JSON.stringify({
-        customerId: Number(selectedCustomerId),
-        type: orderType,
-        tableId: orderType === "mesa" ? Number(selectedTableId) : null,
-        paymentMethod:
-          normalizeRole(userRole) === "admin" && orderPaymentMethod
-            ? orderPaymentMethod
-            : null,
-        note: orderNote,
-        deliveryPhone: orderType === "entrega" ? deliveryPhoneDraft.trim() : undefined,
-        deliveryAddress: orderType === "entrega" ? deliveryAddressDraft.trim() : undefined,
-        items: cartItems.map((item) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          note: item.note,
-          ...(item.sizeLabel ? { sizeLabel: item.sizeLabel } : {}),
-          ...(item.secondProductId
-            ? { secondProductId: Number(item.secondProductId) }
-            : {}),
-        })),
-      }),
-    });
+          customerId: customerIdNum,
+          type: orderType,
+          tableId: orderType === "mesa" ? Number(selectedTableId) : null,
+          paymentMethod:
+            normalizeRole(userRole) === "admin" && orderPaymentMethod
+              ? orderPaymentMethod
+              : null,
+          note: orderNote,
+          deliveryPhone: orderType === "entrega" ? deliveryPhoneDraft.trim() : undefined,
+          deliveryAddress: orderType === "entrega" ? deliveryAddressDraft.trim() : undefined,
+          items: cartItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            note: item.note,
+            ...(item.sizeLabel ? { sizeLabel: item.sizeLabel } : {}),
+            ...(item.secondProductId
+              ? { secondProductId: Number(item.secondProductId) }
+              : {}),
+          })),
+        }),
+      });
+    } catch {
+      setMessage(
+        "Não foi possível enviar o pedido. Verifique a internet e se o endereço da API está correto."
+      );
+      return;
+    }
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      setMessage(err.message || "Falha ao criar pedido.");
+      const fallback =
+        response.status === 403
+          ? "Caixa fechado ou sem permissão. Abra o turno (administrador) ou tente de novo."
+          : response.status >= 500
+            ? "Erro no servidor ao criar o pedido. Tente em instantes."
+            : "Falha ao criar pedido.";
+      if (response.status === 403) {
+        await loadCashCurrent(token);
+        const isOwner = normalizeRole(userRole) === "admin";
+        if (isOwner) setActiveTab("caixa");
+      }
+      setMessage(err.message || fallback);
       return;
     }
     setCartItems([]);
@@ -1580,19 +1718,23 @@ function App() {
     setMessage("Pedido criado com sucesso.");
     loadOrders();
     loadTables();
+    void loadCashCurrent(token);
     if (normalizeRole(userRole) === "admin") loadFinanceSummary();
   }
 
   async function updateOrderPayment(orderId, paymentMethod, paymentStatus) {
-    if (paymentStatus === "pago" && !cashCurrent) {
-      const isOwner = normalizeRole(userRole) === "admin";
-      setMessage(
-        isOwner
-          ? "Abra o turno de caixa para registrar pagamento."
-          : "Turno fechado. Quem registra pagamento é o administrador."
-      );
-      if (isOwner) setActiveTab("caixa");
-      return;
+    if (paymentStatus === "pago") {
+      const cashOpen = await loadCashCurrent(token);
+      if (!cashOpen) {
+        const isOwner = normalizeRole(userRole) === "admin";
+        setMessage(
+          isOwner
+            ? "Abra o turno de caixa para registrar pagamento."
+            : "Turno fechado. Quem registra pagamento é o administrador."
+        );
+        if (isOwner) setActiveTab("caixa");
+        return;
+      }
     }
     const response = await fetch(`${API_URL}/orders/${orderId}/payment`, {
       method: "PATCH",
@@ -1768,10 +1910,19 @@ function App() {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </label>
-              <button type="submit" className="btn-primary">
-                Entrar
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={loginBusy}
+              >
+                {loginBusy ? "Entrando…" : "Entrar"}
               </button>
             </form>
+            {message ? (
+              <div className="login-feedback" role="alert">
+                {message}
+              </div>
+            ) : null}
             <section className="login-recovery">
               <h3>Recuperar senha por código</h3>
               <form className="grid" onSubmit={requestRecoveryCode}>
@@ -2133,11 +2284,18 @@ function App() {
                                 : "Livre"}
                             </span>
                             {busy ? (
-                              <ul className="table-orders-mini">
-                                {t.openOrders.slice(0, 3).map((o) => (
-                                  <li key={o.id}>
-                                    #{o.id} — {o.customer?.name} — R${" "}
-                                    {o.total.toFixed(2)} ({o.status})
+                              <ul className="table-orders-comanda">
+                                {t.openOrders.map((o) => (
+                                  <li key={o.id} className="table-comanda-line">
+                                    <details className="table-comanda-details">
+                                      <summary className="table-comanda-summary">
+                                        #{o.id} — {o.customer?.name} — R${" "}
+                                        {Number(o.total).toFixed(2)} ({o.status})
+                                      </summary>
+                                      <p className="table-comanda-items-text">
+                                        {summarizeOrderItemsForComanda(o)}
+                                      </p>
+                                    </details>
                                   </li>
                                 ))}
                               </ul>
@@ -2330,7 +2488,11 @@ function App() {
                     {orderType === "mesa" ? (
                       <select
                         value={selectedTableId}
-                        onChange={(e) => setSelectedTableId(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setSelectedTableId(v);
+                          if (v) void setTableQrEnabled(Number(v), true);
+                        }}
                       >
                         <option value="">Escolher mesa</option>
                         {tables.map((t) => (
@@ -2340,6 +2502,12 @@ function App() {
                           </option>
                         ))}
                       </select>
+                    ) : null}
+                    {orderType === "mesa" ? (
+                      <p className="hint-inline">
+                        Ao escolher a mesa, o QR/link para o cliente pedir no celular é liberado
+                        automaticamente.
+                      </p>
                     ) : null}
                     {managesFinance ? (
                       <select
@@ -2452,10 +2620,10 @@ function App() {
                           item.secondProductId,
                           secondProd
                         );
-                        const needSecond =
+                        const offerSecondFlavor =
                           productHasSizes(product) &&
                           isHalfHalfSizeLabel(item.sizeLabel);
-                        const secondOptions = needSecond
+                        const secondOptions = offerSecondFlavor
                           ? products.filter(
                               (p) =>
                                 p.id !== product.id &&
@@ -2485,9 +2653,9 @@ function App() {
                                 </span>
                               ) : null}
                             </strong>
-                            {needSecond ? (
+                            {offerSecondFlavor ? (
                               <label className="cart-second-flavor">
-                                <span>2º sabor (meia a meia)</span>
+                                <span>2º sabor (opcional — meia a meia)</span>
                                 <select
                                   value={item.secondProductId ?? ""}
                                   onChange={(e) => {
@@ -2499,7 +2667,7 @@ function App() {
                                     );
                                   }}
                                 >
-                                  <option value="">Escolher…</option>
+                                  <option value="">Só este sabor</option>
                                   {secondOptions.map((p) => (
                                     <option key={p.id} value={p.id}>
                                       {p.name}
@@ -3135,6 +3303,21 @@ function App() {
 
               {activeTab === "caixa" && (
                 <>
+                  <section className="card card-elevated mesa-comandas-section">
+                    <h2 className="section-title">Comandas por mesa</h2>
+                    <p className="section-desc">
+                      Pedidos ativos no salão (balcão e celular), por mesa. Use
+                      fechar comanda para registrar o pagamento, encerrar os pedidos
+                      e liberar a mesa (QR bloqueado até reabrir em Mesas).
+                    </p>
+                    <TableComandasOverview
+                      tables={tables}
+                      canClose={canCloseTableCheckout}
+                      onCloseComanda={(t) => void openCloseTableModal(t)}
+                    />
+                  </section>
+                  {managesFinance ? (
+                    <>
                   <section className="card card-elevated caixa-pendente-card">
                     <h2 className="section-title">Contas em aberto</h2>
                     <p className="section-desc">
@@ -3324,7 +3507,33 @@ function App() {
                       </ul>
                     )}
                   </section>
+                    </>
+                  ) : (
+                    <section className="card card-elevated">
+                      <p className="section-desc">
+                        Contas avulsas (delivery, balcão), resumo do dia e abertura
+                        do turno ficam com o administrador. Para encerrar o consumo
+                        da mesa, use <strong>Fechar comanda e liberar mesa</strong>{" "}
+                        acima (é preciso turno de caixa aberto).
+                      </p>
+                    </section>
+                  )}
                 </>
+              )}
+
+              {activeTab === "pedidos" && (
+                <section className="card card-elevated mesa-comandas-section">
+                  <h2 className="section-title">Comandas por mesa</h2>
+                  <p className="section-desc">
+                    Visão rápida do salão: o que cada mesa consumiu e opção de
+                    fechar a comanda (turno de caixa aberto).
+                  </p>
+                  <TableComandasOverview
+                    tables={tables}
+                    canClose={canCloseTableCheckout}
+                    onCloseComanda={(t) => void openCloseTableModal(t)}
+                  />
+                </section>
               )}
 
               {activeTab === "pedidos" && (
@@ -3899,9 +4108,14 @@ function App() {
                     <div className="close-checkout-summary">
                       <ul className="compact-list close-checkout-list">
                         {closeTableOrders.map((o) => (
-                          <li key={o.id}>
-                            #{o.id} — {o.customer?.name || "Cliente"} — R${" "}
-                            {Number(o.total).toFixed(2)}
+                          <li key={o.id} className="close-checkout-order-block">
+                            <div>
+                              #{o.id} — {o.customer?.name || "Cliente"} — R${" "}
+                              {Number(o.total).toFixed(2)}
+                            </div>
+                            <p className="close-checkout-order-items">
+                              {summarizeOrderItemsForComanda(o)}
+                            </p>
                           </li>
                         ))}
                       </ul>

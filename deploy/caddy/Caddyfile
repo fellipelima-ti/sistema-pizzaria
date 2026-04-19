@@ -1,11 +1,12 @@
 {
-  email {env.CADDY_EMAIL}
+  # Use {$VAR} — expandido ao carregar o Caddyfile (variáveis do container Docker).
+  email {$CADDY_EMAIL}
 }
 
-{$DOMAIN} {
+{$DOMAIN}, www.{$DOMAIN} {
   encode gzip
 
-  # Todo o site (painel, /mesa/ e /api/ já proxy via nginx dentro do container `web`)
+  # Painel, /mesa/, /api/ e /uploads/: nginx no container `web` repassa /api ao `api`.
   reverse_proxy web:80
 }
 

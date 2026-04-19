@@ -67,8 +67,8 @@ model DiningTable {
   number      Int     @unique
   label       String?
   publicToken String  @unique @default(uuid())
-  /** QR permitido para o cliente quando a mesa estiver liberada pelo atendimento. */
-  qrEnabled Boolean  @default(false)
+  /** QR do cliente na mesa (cardapio publico). Fechar comanda bloqueia ate reabrir. */
+  qrEnabled Boolean  @default(true)
   orders      Order[]
   serviceRequests TableServiceRequest[]
   checkoutDiscountLogs TableCheckoutDiscountLog[]

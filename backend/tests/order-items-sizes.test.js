@@ -99,11 +99,20 @@ describe("Pedidos: tamanhos e meia a meia (G)", () => {
     expect(prisma.order.create).not.toHaveBeenCalled();
   });
 
-  test("tamanho G exige segundo sabor", async () => {
+  test("tamanho G aceita só um sabor (2º opcional)", async () => {
     const token = await tokenCaixa();
     prisma.product.findMany.mockResolvedValue([
       { id: 1, name: "Calabresa", price: 30, available: true, sizes: SIZES_PMG },
     ]);
+    prisma.order.create.mockResolvedValue({
+      id: 101,
+      total: 70,
+      status: "novo",
+      paymentStatus: "pendente",
+      customer: { id: 10, name: "X" },
+      items: [],
+      table: null,
+    });
 
     const res = await request(app)
       .post("/orders")
@@ -114,9 +123,18 @@ describe("Pedidos: tamanhos e meia a meia (G)", () => {
         items: [{ productId: 1, quantity: 1, sizeLabel: "G" }],
       });
 
-    expect(res.status).toBe(400);
-    expect(String(res.body.message || "")).toMatch(/2º sabor|meia a meia/i);
-    expect(prisma.order.create).not.toHaveBeenCalled();
+    expect(res.status).toBe(201);
+    expect(prisma.order.create).toHaveBeenCalled();
+    const arg = prisma.order.create.mock.calls[0][0];
+    const rows = arg.data.items.create;
+    expect(rows[0]).toMatchObject({
+      productId: 1,
+      secondProductId: null,
+      sizeLabel: "G",
+      quantity: 1,
+      unitPrice: 70,
+      subtotal: 70,
+    });
   });
 
   test("G exige que o segundo produto tenha o mesmo tamanho cadastrado", async () => {
@@ -202,6 +220,45 @@ describe("Pedidos: tamanhos e meia a meia (G)", () => {
       quantity: 1,
       unitPrice: 85,
       subtotal: 85,
+    });
+  });
+
+  test("POST /public/orders aceita G só com um sabor", async () => {
+    prisma.diningTable.findUnique.mockResolvedValue({
+      id: 1,
+      number: 3,
+      label: null,
+      publicToken: "tok-test",
+      qrEnabled: true,
+    });
+    prisma.product.findMany.mockResolvedValue([
+      { id: 1, name: "Sabor A", price: 30, available: true, sizes: SIZES_PMG },
+    ]);
+    prisma.customer.create.mockResolvedValue({ id: 50 });
+    prisma.order.create.mockResolvedValue({
+      id: 203,
+      total: 70,
+      status: "novo",
+      paymentStatus: "pendente",
+      customer: { id: 50, name: "Mesa" },
+      items: [],
+      table: { number: 3 },
+    });
+
+    const res = await request(app).post("/public/orders").send({
+      publicToken: "tok-test",
+      customerName: "João",
+      items: [{ productId: 1, quantity: 1, sizeLabel: "G" }],
+    });
+
+    expect(res.status).toBe(201);
+    expect(prisma.order.create).toHaveBeenCalled();
+    const arg = prisma.order.create.mock.calls[0][0];
+    expect(arg.data.items.create[0]).toMatchObject({
+      productId: 1,
+      secondProductId: null,
+      unitPrice: 70,
+      subtotal: 70,
     });
   });
 

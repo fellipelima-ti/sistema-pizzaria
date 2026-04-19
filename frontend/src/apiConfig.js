@@ -22,8 +22,10 @@ function resolveApiUrl() {
     }
     return s;
   }
-  if (import.meta.env.DEV && typeof window !== "undefined" && window.location?.origin) {
-    return `${window.location.origin}/api`;
+  if (typeof window !== "undefined" && window.location?.origin) {
+    if (import.meta.env.DEV || import.meta.env.PROD) {
+      return `${window.location.origin}/api`;
+    }
   }
   return defaultApiUrl();
 }

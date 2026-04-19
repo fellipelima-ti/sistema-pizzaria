@@ -31,6 +31,24 @@ describe("API auth flows", () => {
     expect(response.body.user?.role).toBe("admin");
   });
 
+  test("login normaliza email para minusculas", async () => {
+    const passwordHash = await bcrypt.hash("123456", 10);
+    setupUserLookup([
+      {
+        id: 1,
+        name: "Administrador",
+        email: "admin@pizzaria.local",
+        role: "admin",
+        active: true,
+        passwordHash,
+      },
+    ]);
+
+    const response = await loginAs("Admin@Pizzaria.Local", "123456");
+    expect(response.status).toBe(200);
+    expect(response.body.token).toBeTruthy();
+  });
+
   test("login bloqueia usuario inativo", async () => {
     const passwordHash = await bcrypt.hash("123456", 10);
     setupUserLookup([

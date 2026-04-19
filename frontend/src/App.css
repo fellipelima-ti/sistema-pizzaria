@@ -27,6 +27,17 @@
   box-shadow: var(--shadow-md), 0 0 0 1px rgba(15, 23, 42, 0.04);
 }
 
+.login-feedback {
+  margin-top: 14px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+}
+
 .login-recovery {
   margin-top: 18px;
   padding-top: 18px;
@@ -679,6 +690,170 @@
   font-size: 0.75rem;
   color: var(--text-muted);
   width: 100%;
+}
+
+.table-orders-comanda {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.table-comanda-line {
+  margin: 0;
+}
+
+.table-comanda-details {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 2px 8px 6px;
+  font-size: 0.78rem;
+}
+
+.table-comanda-summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+  padding: 4px 0;
+  list-style: none;
+}
+
+.table-comanda-summary::-webkit-details-marker {
+  display: none;
+}
+
+.table-comanda-items-text {
+  margin: 0 0 4px;
+  padding: 0 0 0 4px;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.mesa-comandas-section {
+  margin-bottom: 16px;
+}
+
+.mesa-comandas-empty {
+  margin: 0;
+}
+
+.mesa-comandas-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mesa-comanda-card {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 12px 14px;
+}
+
+.mesa-comanda-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mesa-comanda-label {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.mesa-comanda-card-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 0.8rem;
+}
+
+.mesa-comanda-count {
+  color: var(--text-muted);
+}
+
+.mesa-comanda-total {
+  font-size: 1.05rem;
+  color: var(--accent);
+}
+
+.mesa-comanda-orders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mesa-comanda-order {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.mesa-comanda-order-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.mesa-comanda-items {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.mesa-comanda-actions {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.mesa-comanda-hint {
+  flex: 1 1 200px;
+  margin: 0;
+}
+
+.close-checkout-order-block {
+  margin-bottom: 8px;
+}
+
+.close-checkout-order-items {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.source-badge-inline {
+  margin-left: 6px;
+  font-size: 0.65rem;
+  vertical-align: middle;
 }
 
 .product-chips-label {

@@ -209,20 +209,6 @@ export default function PublicTableOrder() {
       setSubmitError("Adicione pelo menos um item.");
       return;
     }
-    for (const item of cartItems) {
-      const product = products.find((p) => p.id === item.productId);
-      if (!product) continue;
-      if (
-        productHasSizes(product) &&
-        isHalfHalfSizeLabel(item.sizeLabel) &&
-        !item.secondProductId
-      ) {
-        setSubmitError(
-          `Escolha o 2º sabor (meia a meia) para "${product.name}" (${String(item.sizeLabel).trim()}).`
-        );
-        return;
-      }
-    }
     setSubmitting(true);
     const res = await fetch(`${API_URL}/public/orders`, {
       method: "POST",
@@ -355,8 +341,8 @@ export default function PublicTableOrder() {
           <p className="public-mesa-sub">{tableInfo.label}</p>
         ) : null}
         <p className="public-mesa-hint">
-          Cardápio abaixo — toque nos itens para adicionar. Sem cadastro. Pizza
-          em tamanho G: no carrinho, escolha o 2º sabor (meia a meia).
+          Sem cadastro. No tamanho G, o 2º sabor (meia a meia) é opcional no
+          carrinho.
         </p>
         {pixChave ? (
           <div className="public-mesa-pix">
@@ -412,80 +398,118 @@ export default function PublicTableOrder() {
         ) : null}
       </header>
 
-      <form className="public-mesa-card" onSubmit={submitOrder}>
-        <h2 className="public-mesa-h2 public-mesa-h2-lead">Cardápio</h2>
+      <form className="public-mesa-card public-mesa-card-main" onSubmit={submitOrder}>
+        <div className="public-mesa-menu-head">
+          <h2 className="public-mesa-h2 public-mesa-h2-lead">Cardápio</h2>
+          <p className="public-mesa-menu-tagline">
+            Toque no prato para adicionar · tamanhos com botões separados · G:
+            2º sabor opcional
+          </p>
+        </div>
         {productsByCategory.length === 0 ? (
           <p className="public-mesa-empty">Cardápio indisponível no momento.</p>
         ) : (
-          <div className="public-mesa-chips-grouped">
-            {productsByCategory.map(({ category, items }) => (
-              <div key={category} className="public-mesa-chip-block">
-                <span className="public-mesa-chip-cat">{category}</span>
-                <div className="public-mesa-chips">
+          <div className="public-mesa-menu-grouped">
+            {productsByCategory.map(({ category, items }, catIdx) => (
+              <section
+                key={category}
+                className="public-mesa-cat-block"
+                aria-labelledby={`menu-cat-${catIdx}`}
+              >
+                <div className="public-mesa-cat-head">
+                  <h3 className="public-mesa-cat-title" id={`menu-cat-${catIdx}`}>
+                    {category}
+                  </h3>
+                  <span className="public-mesa-cat-count">{items.length} itens</span>
+                </div>
+                <div className="public-mesa-menu-grid">
                   {items.map((product) =>
                     productHasSizes(product) ? (
                       <div
                         key={product.id}
-                        className="public-mesa-chip public-mesa-chip-sizes"
+                        className="public-mesa-prod public-mesa-prod--sizes"
                       >
-                        <div className="public-mesa-chip-sizes-head">
+                        <div className="public-mesa-prod-media">
                           {product.imageUrl ? (
-                            <span className="public-mesa-chip-img-wrap">
-                              <img
-                                src={productImageSrc(product.imageUrl)}
-                                alt=""
-                              />
-                            </span>
-                          ) : null}
-                          <span className="public-mesa-chip-name">{product.name}</span>
+                            <img
+                              src={productImageSrc(product.imageUrl)}
+                              alt=""
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          ) : (
+                            <div
+                              className="public-mesa-prod-media-placeholder"
+                              aria-hidden
+                            />
+                          )}
                         </div>
-                        <span className="public-mesa-chip-price-multi">
-                          {productSizesPriceSummary(product)}
-                        </span>
-                        <div className="public-mesa-size-btns">
-                          {product.sizes.map((sz) => (
-                            <button
-                              key={`${product.id}-${sz.label}`}
-                              type="button"
-                              className="public-mesa-size-btn"
-                              onClick={() =>
-                                addProductToCart(product.id, sz.label)
-                              }
-                            >
-                              {String(sz.label).trim()} R${" "}
-                              {Number(sz.price).toFixed(2)}
-                            </button>
-                          ))}
+                        <div className="public-mesa-prod-body">
+                          <span className="public-mesa-prod-name">{product.name}</span>
+                          <p className="public-mesa-prod-pricesum">
+                            {productSizesPriceSummary(product)}
+                          </p>
+                          <div
+                            className="public-mesa-size-btns"
+                            role="group"
+                            aria-label={`Tamanhos: ${product.name}`}
+                          >
+                            {product.sizes.map((sz) => (
+                              <button
+                                key={`${product.id}-${sz.label}`}
+                                type="button"
+                                className="public-mesa-size-btn"
+                                onClick={() =>
+                                  addProductToCart(product.id, sz.label)
+                                }
+                              >
+                                <span className="public-mesa-size-label">
+                                  {String(sz.label).trim()}
+                                </span>
+                                <span className="public-mesa-size-price">
+                                  R$ {Number(sz.price).toFixed(2)}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     ) : (
                       <button
                         key={product.id}
                         type="button"
-                        className="public-mesa-chip"
+                        className="public-mesa-prod public-mesa-prod--simple"
                         onClick={() => addProductToCart(product.id)}
                       >
-                        {product.imageUrl ? (
-                          <span className="public-mesa-chip-img-wrap">
+                        <div className="public-mesa-prod-media">
+                          {product.imageUrl ? (
                             <img
                               src={productImageSrc(product.imageUrl)}
                               alt=""
+                              loading="lazy"
+                              decoding="async"
                             />
-                          </span>
-                        ) : null}
-                        <span className="public-mesa-chip-text">
-                          <span className="public-mesa-chip-name">
-                            + {product.name}
-                          </span>
-                          <span className="public-mesa-chip-price">
-                            R$ {Number(product.price).toFixed(2)}
-                          </span>
-                        </span>
+                          ) : (
+                            <div
+                              className="public-mesa-prod-media-placeholder"
+                              aria-hidden
+                            />
+                          )}
+                        </div>
+                        <div className="public-mesa-prod-body">
+                          <span className="public-mesa-prod-name">{product.name}</span>
+                          <div className="public-mesa-prod-row">
+                            <span className="public-mesa-prod-price">
+                              R$ {Number(product.price).toFixed(2)}
+                            </span>
+                            <span className="public-mesa-prod-cta">Adicionar</span>
+                          </div>
+                        </div>
                       </button>
                     )
                   )}
                 </div>
-              </div>
+              </section>
             ))}
           </div>
         )}
@@ -507,10 +531,10 @@ export default function PublicTableOrder() {
                 item.secondProductId,
                 secondProd
               );
-              const needSecond =
+              const offerSecondFlavor =
                 productHasSizes(product) &&
                 isHalfHalfSizeLabel(item.sizeLabel);
-              const secondOptions = needSecond
+              const secondOptions = offerSecondFlavor
                 ? products.filter(
                     (p) =>
                       p.id !== product.id &&
@@ -550,9 +574,9 @@ export default function PublicTableOrder() {
                         ) : null}
                       </strong>
                     </div>
-                    {needSecond ? (
+                    {offerSecondFlavor ? (
                       <label className="public-mesa-second-flavor">
-                        <span>2º sabor</span>
+                        <span>2º sabor (opcional)</span>
                         <select
                           value={item.secondProductId ?? ""}
                           onChange={(e) => {
@@ -564,7 +588,7 @@ export default function PublicTableOrder() {
                             );
                           }}
                         >
-                          <option value="">Escolher…</option>
+                          <option value="">Só este sabor</option>
                           {secondOptions.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.name}

@@ -1,0 +1,2 @@
+# Scripts executados na VPS (Linux) precisam de LF
+*.sh text eol=lf

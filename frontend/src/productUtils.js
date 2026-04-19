@@ -29,13 +29,13 @@ export function unitPriceForProductLine(product, sizeLabel) {
   return s ? Number(s.price) || 0 : Number(product.price) || 0;
 }
 
-/** Tamanhos em que vale meia a meia (dois sabores), ex. G ou Grande. */
+/** Tamanhos em que pode haver 2º sabor opcional (meia a meia), ex. G ou Grande. */
 export function isHalfHalfSizeLabel(sizeLabel) {
   const t = String(sizeLabel ?? "").trim().toLowerCase();
   return t === "g" || t === "grande" || t === "gg";
 }
 
-/** Preço unitário no carrinho: meia a meia (G) = maior preço entre os dois sabores. */
+/** Preço unitário no carrinho: com 2º sabor no G, usa o maior preço entre os dois. */
 export function unitPriceForCartLine(
   mainProduct,
   sizeLabel,

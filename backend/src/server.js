@@ -360,7 +360,7 @@ const orderInclude = {
 
 const productSizesInclude = { sizes: { orderBy: { sortOrder: "asc" } } };
 
-/** Tamanhos em que vale meia a meia (dois sabores). */
+/** Tamanhos em que pode haver 2º sabor opcional (meia a meia), ex. G. */
 function isHalfHalfSizeLabel(resolvedLabel) {
   const t = String(resolvedLabel ?? "").trim().toLowerCase();
   return t === "g" || t === "grande" || t === "gg";
@@ -457,37 +457,34 @@ async function resolveOrderItemsPayload(items, options = {}) {
         snapshotSize = String(match.label).trim();
 
         if (isHalfHalfSizeLabel(snapshotSize)) {
-          if (!secondId) {
-            return {
-              _err: `Pizza tamanho "${snapshotSize}": escolha o 2º sabor (meia a meia).`,
-            };
+          if (secondId) {
+            if (secondId === product.id) {
+              return {
+                _err: `O 2º sabor deve ser diferente do 1º ("${product.name}").`,
+              };
+            }
+            const p2 = products.find((p) => p.id === secondId);
+            if (!p2) {
+              return {
+                _err: requireAvailable
+                  ? "Um dos sabores não está disponível."
+                  : "Segundo sabor inválido.",
+              };
+            }
+            const sizes2 = Array.isArray(p2.sizes) ? p2.sizes : [];
+            const match2 = sizes2.find(
+              (s) =>
+                String(s.label).trim().toLowerCase() ===
+                String(snapshotSize).toLowerCase()
+            );
+            if (!match2) {
+              return {
+                _err: `"${p2.name}" não possui o tamanho "${snapshotSize}" para combinar na meia a meia.`,
+              };
+            }
+            const u2 = Number(match2.price);
+            unitPrice = Math.max(unitPrice, u2);
           }
-          if (secondId === product.id) {
-            return {
-              _err: `O 2º sabor deve ser diferente do 1º ("${product.name}").`,
-            };
-          }
-          const p2 = products.find((p) => p.id === secondId);
-          if (!p2) {
-            return {
-              _err: requireAvailable
-                ? "Um dos sabores não está disponível."
-                : "Segundo sabor inválido.",
-            };
-          }
-          const sizes2 = Array.isArray(p2.sizes) ? p2.sizes : [];
-          const match2 = sizes2.find(
-            (s) =>
-              String(s.label).trim().toLowerCase() ===
-              String(snapshotSize).toLowerCase()
-          );
-          if (!match2) {
-            return {
-              _err: `"${p2.name}" não possui o tamanho "${snapshotSize}" para combinar na meia a meia.`,
-            };
-          }
-          const u2 = Number(match2.price);
-          unitPrice = Math.max(unitPrice, u2);
         } else if (secondId) {
           return {
             _err: `Só pizza G (grande) aceita meia a meia. Remova o 2º sabor para "${product.name}" (${snapshotSize}).`,
@@ -792,7 +789,10 @@ app.post("/public/table/:token/service-request", publicOrderCreateLimiter, async
 });
 
 app.post("/auth/login", loginLimiter, async (req, res) => {
-  const { email, password } = req.body;
+  const email = String(req.body?.email || "")
+    .trim()
+    .toLowerCase();
+  const password = String(req.body?.password || "");
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return res.status(401).json({ message: "E-mail ou senha inválidos." });
   if (user.active === false) {
@@ -1405,7 +1405,7 @@ app.get("/tables", authRequired, requireRoles(...TABLES_READ), async (_req, res)
       status: { not: "finalizado" },
       paymentStatus: { not: "cancelado" },
     },
-    include: { customer: true },
+    include: orderInclude,
     orderBy: { id: "desc" },
   });
   const byTable = {};
@@ -1658,7 +1658,7 @@ app.post("/tables", authRequired, requireRoles(...ADMIN_ONLY), async (req, res) 
     return res.status(400).json({ message: "Já existe mesa com este número." });
   }
   const table = await prisma.diningTable.create({
-    data: { number: n, label: label || null },
+    data: { number: n, label: label || null, qrEnabled: true },
   });
   return res.status(201).json(table);
 });
@@ -2094,8 +2094,12 @@ app.get("/cash/shifts", authRequired, requireRoles(...OWNER_FINANCE), async (req
 });
 
 app.post("/seed", async (_req, res) => {
-  const seedAllowed =
-    process.env.ALLOW_SEED === "true" || process.env.NODE_ENV !== "production";
+  const allowSeedFlag = ["true", "1", "yes"].includes(
+    String(process.env.ALLOW_SEED || "")
+      .trim()
+      .toLowerCase()
+  );
+  const seedAllowed = allowSeedFlag || process.env.NODE_ENV !== "production";
   if (!seedAllowed) {
     return res.status(403).json({
       message:
@@ -2103,6 +2107,7 @@ app.post("/seed", async (_req, res) => {
     });
   }
 
+  try {
   const admin = await prisma.user.findUnique({
     where: { email: "admin@pizzaria.local" },
   });
@@ -2185,7 +2190,10 @@ app.post("/seed", async (_req, res) => {
 
   if ((await prisma.diningTable.count()) === 0) {
     await prisma.diningTable.createMany({
-      data: Array.from({ length: 12 }, (_, i) => ({ number: i + 1 })),
+      data: Array.from({ length: 12 }, (_, i) => ({
+        number: i + 1,
+        qrEnabled: true,
+      })),
     });
   }
 
@@ -2196,6 +2204,12 @@ app.post("/seed", async (_req, res) => {
   });
 
   res.json({ message: "Seed concluido com sucesso." });
+  } catch (err) {
+    console.error("[seed]", err);
+    res.status(500).json({
+      message: err?.message || "Erro ao executar seed.",
+    });
+  }
 });
 
 app.post(
